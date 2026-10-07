@@ -12,6 +12,10 @@
 
 ###############################################################################
 
+### Clean Environment
+rm(list = ls())
+
+### Load packages
 require(dplyr)
 require(RPostgres)
 require(sf)
@@ -20,13 +24,47 @@ require(lubridate)
 require(DBI)
 require(readxl)
 
+###############################################################################
+
+## TESTING SECTION
+require(Microsoft365R)
+
+sharepoint <- get_sharepoint_site(site_url = "https://birdscanadaorg-my.sharepoint.com/:f:/g/personal/kbasupport_birdscanada_org1/IgDWQe4AurPlQaTPN2JTV0q0ATlphi3dIwj1Gy2WuZ1TNDM?e=Pezii0")
+
+###############################################################################
+
+### Set up database connection
+
+### When running on the KBA Database Server
+
+# Environment variables 
+env_vars <- c("kbapipeline_pswd", "postgres_user", "postgres_pass", "database_name", "database_host", "mailtrap_pass", "database_port", "geoserver_pass", "docker_env", "obsoleteReasonURL", "galleryItemsURL")
+
+for(env in env_vars){
+  
+  # Get variable
+  var <- Sys.getenv(toupper(env))
+  
+  # Assign variable
+  assign(env, var)
+}
+rm(env, env_vars, var)
+
+# KBA Registry database information
+# Registry database connection
+kbadb <- dbConnect(
+  Postgres(), 
+  user = postgres_user,
+  password = postgres_pass,
+  dbname = database_name,
+  host = database_host,
+  port = database_port
+)
+
+### When running on the Staging Server
 
 ### Set working directory to wherever you have the TBI and threats tables saved
-
-### If you would like to write a second .csv of the priority table with all
-### categories BEFORE numerical rankings, remove all "#" before the object
-### "original" and run as normal
-
+setwd("C:\\Users\\kbasupport\\OneDrive - birdscanada.org\\Desktop\\KBACanada_Code\\BirdsCanada_KBAPrioritization")
 
 kbadb = dbConnect(
   Postgres(), 
@@ -36,6 +74,16 @@ kbadb = dbConnect(
   host = '143.110.218.194',
   port = 5533,
   sslmode = 'require')
+
+
+###############################################################################
+
+
+### Set working directory to wherever you have the TBI and threats tables saved
+
+### If you would like to write a second .csv of the priority table with all
+### categories BEFORE numerical rankings, remove all "#" before the object
+### "original" and run as normal
 
 KBA_Site <- kbadb %>% read_sf("KBA_Site")
 site <- KBA_Site[, c(1,2,5,13)] %>% st_drop_geometry()
