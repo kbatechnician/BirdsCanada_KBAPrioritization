@@ -1,4 +1,16 @@
-### Birds Canada - Key Biodiversity Areas Prioritization Script
+###############################################################################
+
+# Project: Birds Canada - Key Biodiversity Areas Prioritization
+
+# Script Title: Assigning prioritization scores to Key Biodiversity Areas (KBAs)
+# for bird species in Canada
+
+# Script Author: Courtney Donkersteeg (cdonkersteeg@birdscanada.org) and 
+# Chelsea Aristone (caristone@birdscanada.org)
+
+# Creation Date: 2026-10-07
+
+###############################################################################
 
 require(dplyr)
 require(RPostgres)
