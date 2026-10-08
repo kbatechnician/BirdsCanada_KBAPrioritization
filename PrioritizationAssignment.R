@@ -15,14 +15,30 @@
 ### Clean Environment
 rm(list = ls())
 
-### Load packages
-require(dplyr)
-require(RPostgres)
-require(sf)
-require(tidyverse)
-require(lubridate)
-require(DBI)
-require(readxl)
+### Load necessary packages
+
+if (system.file(package = "librarian") == "") {
+  install.packages("librarian")
+}
+
+librarian::shelf(
+  dplyr,
+  RPostgres,
+  lubridate,
+  DBI,
+  readxl,
+  tidyverse,
+  sf,
+  terra,
+  units,
+  measurements,
+  mapview,
+  tidyterra,
+  leaflet,
+  reporter,
+  svMisc,
+  htmlwidgets
+)
 
 ###############################################################################
 
@@ -78,8 +94,6 @@ kbadb = dbConnect(
 
 ###############################################################################
 
-
-### Set working directory to wherever you have the TBI and threats tables saved
 
 ### If you would like to write a second .csv of the priority table with all
 ### categories BEFORE numerical rankings, remove all "#" before the object
@@ -166,6 +180,8 @@ spa$Subcriterion[grepl("B", spa$Subcriterion)] <- 1
 spa$Subcriterion[grepl("D", spa$Subcriterion)] <- 0
 
 
+########################## 6. Thriving Bird Index #############################
+
 tbi <- read_xlsx("ThrivingBirdIndex.xlsx") %>% select(english_name, responsibility, indicator_lt)
 spa <- spa %>% rename(english_name = Original_CommonNameEN)
 spa <- full_join(spa, tbi, by = "english_name")
@@ -192,7 +208,6 @@ spasum <- spa %>% group_by(SiteID) %>% summarise(SpeciesStatus = sum(as.numeric(
 p <- full_join(p, spasum, by = "SiteID")
 p <- full_join(p, spaind, by = "SiteID")
 p <- full_join(p, spares, by = "SiteID")
-
 
 threat <- read_xlsx("SARThreatDataExport30April2026.xlsx", sheet = 1) %>% select(`COSEWIC common name and population`, `Overall threat impact (assigned)`, `Threat impact`) %>%
   rename(english_name = `COSEWIC common name and population`, overall.threat = `Overall threat impact (assigned)`, individual.threat = `Threat impact`)
@@ -224,6 +239,25 @@ p <- full_join(p, threatover, by = "SiteID")
 p <- full_join(p, threatind, by = "SiteID")
 p <- p[!is.na(p$SiteCode),]
 
+
+########################## 10. Human Modification #############################
+
+# First time processing
+  
+  hm <- rast("Data/HM_CA_2022_r90_20251030.tif") # Load the raster data
+  hm <- hm %>% trim() # Trim any NAs out
+  hm <- project(hm, "ESRI:102001") %>% trim() # Reproject raster layer to Canada Albers Equal Area Conic
+  writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif",overwrite = TRUE) # Save and overwrite the old file
+
+# If raster has already been processed, read it in using the following code
+  hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
+  
+# Store Human Modification CRS for use throughout script.
+  hm_crs <- crs(hm)
+
+################### Calculate total score and save output #####################
+
 p$total.score <- rowSums(p[,c(4:12)], na.rm = T)
 write.csv(p, "priority_v2.csv")
 #write.csv(original, "original_priority_v2.csv")
+
