@@ -94,10 +94,11 @@ kbadb = dbConnect(
 
 ###############################################################################
 
-
 ### If you would like to write a second .csv of the priority table with all
 ### categories BEFORE numerical rankings, remove all "#" before the object
 ### "original" and run as normal
+
+############### 1. PA/OECM Overlap AND 2. Effective Protection ################
 
 KBA_Site <- kbadb %>% read_sf("KBA_Site")
 site <- KBA_Site[, c(1,2,5,13)] %>% st_drop_geometry()
@@ -108,7 +109,6 @@ site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 20 & site$PA.OECM <= 40, 4)
 site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 40 & site$PA.OECM <= 60, 3)
 site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 60 & site$PA.OECM <= 80, 2)
 site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 80 & site$PA.OECM <= 100, 1)
-
 
 KBA_PA <- kbadb %>% read_sf("KBA_ProtectedArea")
 pa <- KBA_PA[, c(2,7,9)] 
@@ -132,6 +132,8 @@ pa <- pa %>% group_by(SiteID) %>% summarise(effective.protection = sum(effective
 p <- full_join(site, pa, by = "SiteID")
 
 
+########################### 3. Priority Habitat ###############################
+
 KBA_Habitat <- kbadb %>% read_sf("KBA_Habitat")
 Habitat <- kbadb %>% read_sf("Habitat")
 KBA_System <- kbadb %>% read_sf("KBA_System")
@@ -152,8 +154,10 @@ hab$PriorityHabitat <- replace(hab$PriorityHabitat, hab$PriorityHabitat > 40 & h
 hab$PriorityHabitat <- replace(hab$PriorityHabitat, hab$PriorityHabitat > 60 & hab$PriorityHabitat <= 80, 4)
 hab$PriorityHabitat <- replace(hab$PriorityHabitat, hab$PriorityHabitat > 80 & hab$PriorityHabitat <= 100, 5)
 
-
 p <- full_join(p, hab, by = "SiteID")
+
+
+############ 4. Number of Trigger elements AND 5. Species at Risk #############
 
 KBA_Subcri <- kbadb %>% read_sf("Subcriterion")
 KBA_SpASubcri <- kbadb %>% read_sf("SpeciesAssessment_Subcriterion")
@@ -180,7 +184,7 @@ spa$Subcriterion[grepl("B", spa$Subcriterion)] <- 1
 spa$Subcriterion[grepl("D", spa$Subcriterion)] <- 0
 
 
-########################## 6. Thriving Bird Index #############################
+################ 6. Thriving Bird Index AND 7. Responsibility #################
 
 tbi <- read_xlsx("ThrivingBirdIndex.xlsx") %>% select(english_name, responsibility, indicator_lt)
 spa <- spa %>% rename(english_name = Original_CommonNameEN)
@@ -208,6 +212,9 @@ spasum <- spa %>% group_by(SiteID) %>% summarise(SpeciesStatus = sum(as.numeric(
 p <- full_join(p, spasum, by = "SiteID")
 p <- full_join(p, spaind, by = "SiteID")
 p <- full_join(p, spares, by = "SiteID")
+
+
+############## 8. Overall Threats AND 9. Individual Threats ###################
 
 threat <- read_xlsx("SARThreatDataExport30April2026.xlsx", sheet = 1) %>% select(`COSEWIC common name and population`, `Overall threat impact (assigned)`, `Threat impact`) %>%
   rename(english_name = `COSEWIC common name and population`, overall.threat = `Overall threat impact (assigned)`, individual.threat = `Threat impact`)
@@ -243,17 +250,17 @@ p <- p[!is.na(p$SiteCode),]
 ########################## 10. Human Modification #############################
 
 # First time processing
-  
-  hm <- rast("Data/HM_CA_2022_r90_20251030.tif") # Load the raster data
-  hm <- hm %>% trim() # Trim any NAs out
-  hm <- project(hm, "ESRI:102001") %>% trim() # Reproject raster layer to Canada Albers Equal Area Conic
-  writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif",overwrite = TRUE) # Save and overwrite the old file
+hm <- rast("Data/HM_CA_2022_r90_20251030.tif") # Load the raster data
+hm <- hm %>% trim() # Trim any NAs out
+hm <- project(hm, "ESRI:102001") %>% trim() # Reproject raster layer to Canada Albers Equal Area Conic
+writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif",overwrite = TRUE) # Save and overwrite the old file
 
 # If raster has already been processed, read it in using the following code
-  hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
+hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
   
 # Store Human Modification CRS for use throughout script.
-  hm_crs <- crs(hm)
+hm_crs <- crs(hm)
+
 
 ################### Calculate total score and save output #####################
 
