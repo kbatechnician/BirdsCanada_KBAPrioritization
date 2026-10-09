@@ -47,9 +47,7 @@ require(Microsoft365R)
 sharepoint <- get_sharepoint_site(site_url = "https://birdscanadaorg-my.sharepoint.com/:f:/g/personal/kbasupport_birdscanada_org1/IgDWQe4AurPlQaTPN2JTV0q0ATlphi3dIwj1Gy2WuZ1TNDM?e=Pezii0")
 
 
-###############################################################################
-
-### Set up database connection
+######################## Set up database connection ###########################
 
 ### When running on the KBA Database Server
 
@@ -98,38 +96,47 @@ kbadb = dbConnect(
 ### categories BEFORE numerical rankings, remove all "#" before the object
 ### "original" and run as normal
 
-############### 1. PA/OECM Overlap AND 2. Effective Protection ################
 
-KBA_Site <- kbadb %>% read_sf("KBA_Site")
-site <- KBA_Site[, c(1,2,5,13)] %>% st_drop_geometry()
-site <- site %>% rename(PA.OECM = PercentProtected)
+############################# 1. PA/OECM Overlap ##############################
+
+KBA_Site <- kbadb %>% read_sf("KBA_Site") # Load KBA_Site table from the KBA database
+site <- KBA_Site[, c(1,2,5,13)] %>% 
+  st_drop_geometry() %>% 
+  rename(PA.OECM = PercentProtected)
 #original <- site
-site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM <= 20, 5)
-site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 20 & site$PA.OECM <= 40, 4)
-site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 40 & site$PA.OECM <= 60, 3)
-site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 60 & site$PA.OECM <= 80, 2)
-site$PA.OECM <- replace(site$PA.OECM, site$PA.OECM > 80 & site$PA.OECM <= 100, 1)
+site <- site %>%
+  mutate(PA.OECM = case_when(
+    PA.OECM <= 20 ~ 5,
+    PA.OECM > 20 & PA.OECM <= 40 ~ 4,
+    PA.OECM > 40 & PA.OECM <= 60 ~ 3,
+    PA.OECM > 60 & PA.OECM <= 80 ~ 2,
+    PA.OECM > 80 & PA.OECM <= 100 ~ 1
+  ))
 
-KBA_PA <- kbadb %>% read_sf("KBA_ProtectedArea")
+
+########################### 2. Effective Protection  ##########################
+
+KBA_PA <- kbadb %>% read_sf("KBA_ProtectedArea") # Load KBA_ProtectedArea table from the KBA datbase
 pa <- KBA_PA[, c(2,7,9)] 
 #original <- original %>% full_join(pa, by = "SiteID") %>% rename(effective.cover = PercentCover)
-pa$IUCNCat_EN <- replace(pa$IUCNCat_EN, pa$IUCNCat_EN == "Not reported", 5)
-pa$IUCNCat_EN <- replace(pa$IUCNCat_EN, pa$IUCNCat_EN == "Not applicable", 5)
-pa$IUCNCat_EN[grepl(paste(c("Ia", "Strict nature reserve"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 1
-pa$IUCNCat_EN[grepl(paste(c("Ib", "Wilderness area"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 1
-pa$IUCNCat_EN[grepl(paste(c("II", "National park"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 1
-pa$IUCNCat_EN[grepl(paste(c("III", "Natural monument or feature"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 2
-pa$IUCNCat_EN[grepl(paste(c("IV", "Habitat/species management area"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 3
-pa$IUCNCat_EN[grepl(paste(c("V", "Protected landscape or seascape"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 4
-pa$IUCNCat_EN[grepl(paste(c("VI", "Protected area with sustainable use of natural resources"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T)] <- 3
-pa$IUCNCat_EN <- as.numeric(pa$IUCNCat_EN)
+pa <- pa %>%
+  mutate(IUCNCat_EN = case_when(
+    IUCNCat_EN == "Not reported" ~ 5,
+    IUCNCat_EN == "Not applicable" ~ 5,
+    grepl(paste(c("Ia", "Strict nature reserve"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 1,
+    grepl(paste(c("Ib", "Wilderness area"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 1,
+    grepl(paste(c("II", "National park"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 1,
+    grepl(paste(c("III", "Natural monument or feature"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 2,
+    grepl(paste(c("IV", "Habitat/species management area"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 3,
+    grepl(paste(c("V", "Protected landscape or seascape"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 4,
+    grepl(paste(c("VI", "Protected area with sustainable use of natural resources"), collapse = "|"), pa$IUCNCat_EN, ignore.case = T) ~ 3
+  ))
 pa$effective.protection <- pa$IUCNCat_EN * (pa$PercentCover/100)
-pa$IUCNCat_EN <- NULL
-pa$PercentCover <- NULL
-pa <- pa %>% group_by(SiteID) %>% summarise(effective.protection = sum(effective.protection))
+pa <- pa %>% group_by(SiteID) %>% 
+  select(-IUCNCat_EN, -PercentCover) %>%
+  summarise(effective.protection = sum(effective.protection))
 
-
-p <- full_join(site, pa, by = "SiteID")
+p <- full_join(site, pa, by = "SiteID") # Creates a table called p that will hold all the index values calculated
 
 
 ########################### 3. Priority Habitat ###############################
@@ -186,7 +193,7 @@ spa$Subcriterion[grepl("D", spa$Subcriterion)] <- 0
 
 ################ 6. Thriving Bird Index AND 7. Responsibility #################
 
-tbi <- read_xlsx("ThrivingBirdIndex.xlsx") %>% select(english_name, responsibility, indicator_lt)
+tbi <- read_xlsx("Data\\ThrivingBirdIndex.xlsx") %>% select(english_name, responsibility, indicator_lt)
 spa <- spa %>% rename(english_name = Original_CommonNameEN)
 spa <- full_join(spa, tbi, by = "english_name")
 #original <- original %>% rename(english_name = Original_CommonNameEN) %>% full_join(tbi, by = "english_name")
@@ -216,7 +223,7 @@ p <- full_join(p, spares, by = "SiteID")
 
 ############## 8. Overall Threats AND 9. Individual Threats ###################
 
-threat <- read_xlsx("SARThreatDataExport30April2026.xlsx", sheet = 1) %>% select(`COSEWIC common name and population`, `Overall threat impact (assigned)`, `Threat impact`) %>%
+threat <- read_xlsx("Data\\SARThreatDataExport30April2026.xlsx", sheet = 1) %>% select(`COSEWIC common name and population`, `Overall threat impact (assigned)`, `Threat impact`) %>%
   rename(english_name = `COSEWIC common name and population`, overall.threat = `Overall threat impact (assigned)`, individual.threat = `Threat impact`)
 #original <- original %>% full_join(threat, by = "english_name") %>% unique()
 threat <- full_join(threat, spa, by = "english_name")
@@ -253,7 +260,7 @@ p <- p[!is.na(p$SiteCode),]
 # hm <- rast("Data/HM_CA_2022_r90_20251030.tif") # Load the raster data
 # hm <- hm %>% trim() # Trim any NAs out
 # hm <- project(hm, "ESRI:102001") %>% trim() # Reproject raster layer to Canada Albers Equal Area Conic
-# writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif",overwrite = TRUE) # Save and overwrite the old file
+# writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif", overwrite = TRUE) # Save and overwrite the old file
 
 # If raster has already been processed, read it in using the following code
 hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
@@ -262,20 +269,21 @@ hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
 hm_crs <- crs(hm)
 
 # Prep KBA geometry for analysis
-KBA_geom <- KBA_Site %>% select(SiteCode,geometry) %>% st_transform(hm_crs)
+KBA_geom <- KBA_Site %>% select(SiteID,SiteCode,Name_EN,geometry) %>% st_transform(hm_crs)
 
 # Assign an HM value for each KBA based on mean HM at the site
 KBA_geom$HM <- NA # Create a blank column to store HM values
-for (i in KBA_geom$SiteCode) {
+for (i in KBA_geom$SiteID) {
   # Extract human modification scores for KBAs
-  KBA_geom$HM[KBA_geom$SiteCode == i] <- extract(
+  KBA_geom$HM[KBA_geom$SiteID == i] <- extract(
         hm,
-        KBA_geom[KBA_geom$SiteCode == i,],
+        KBA_geom[KBA_geom$SiteID == i,],
         fun = "mean",
         na.rm = TRUE,
         ID = FALSE
       )
 }
+KBA_geom$HM <- as.numeric(KBA_geom$HM)
 
 
 ################### Calculate total score and save output #####################
