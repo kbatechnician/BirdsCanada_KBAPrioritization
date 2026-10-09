@@ -10,7 +10,7 @@
 
 # Creation Date: 2026-10-07
 
-###############################################################################
+########################### Initial Setup #####################################
 
 ### Clean Environment
 rm(list = ls())
@@ -40,12 +40,12 @@ librarian::shelf(
   htmlwidgets
 )
 
-###############################################################################
+############################# TESTING SECTION #################################
 
-## TESTING SECTION
 require(Microsoft365R)
 
 sharepoint <- get_sharepoint_site(site_url = "https://birdscanadaorg-my.sharepoint.com/:f:/g/personal/kbasupport_birdscanada_org1/IgDWQe4AurPlQaTPN2JTV0q0ATlphi3dIwj1Gy2WuZ1TNDM?e=Pezii0")
+
 
 ###############################################################################
 
@@ -250,16 +250,32 @@ p <- p[!is.na(p$SiteCode),]
 ########################## 10. Human Modification #############################
 
 # First time processing
-hm <- rast("Data/HM_CA_2022_r90_20251030.tif") # Load the raster data
-hm <- hm %>% trim() # Trim any NAs out
-hm <- project(hm, "ESRI:102001") %>% trim() # Reproject raster layer to Canada Albers Equal Area Conic
-writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif",overwrite = TRUE) # Save and overwrite the old file
+# hm <- rast("Data/HM_CA_2022_r90_20251030.tif") # Load the raster data
+# hm <- hm %>% trim() # Trim any NAs out
+# hm <- project(hm, "ESRI:102001") %>% trim() # Reproject raster layer to Canada Albers Equal Area Conic
+# writeRaster(hm, "Data/HM_CA_2022_r90_20251030.tif",overwrite = TRUE) # Save and overwrite the old file
 
 # If raster has already been processed, read it in using the following code
 hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
   
 # Store Human Modification CRS for use throughout script.
 hm_crs <- crs(hm)
+
+# Prep KBA geometry for analysis
+KBA_geom <- KBA_Site %>% select(SiteCode,geometry) %>% st_transform(hm_crs)
+
+# Assign an HM value for each KBA based on mean HM at the site
+KBA_geom$HM <- NA # Create a blank column to store HM values
+for (i in KBA_geom$SiteCode) {
+  # Extract human modification scores for KBAs
+  KBA_geom$HM[KBA_geom$SiteCode == i] <- extract(
+        hm,
+        KBA_geom[KBA_geom$SiteCode == i,],
+        fun = "mean",
+        na.rm = TRUE,
+        ID = FALSE
+      )
+}
 
 
 ################### Calculate total score and save output #####################
