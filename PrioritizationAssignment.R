@@ -37,7 +37,8 @@ librarian::shelf(
   leaflet,
   reporter,
   svMisc,
-  htmlwidgets
+  htmlwidgets,
+  gsheet
 )
 
 ############################# TESTING SECTION #################################
@@ -75,9 +76,10 @@ kbadb <- dbConnect(
   port = database_port
 )
 
+
 ### When running on the Staging Server
 
-### Set working directory to wherever you have the TBI and threats tables saved
+# Set working directory to wherever you have the TBI and threats tables saved
 setwd("C:\\Users\\kbasupport\\OneDrive - birdscanada.org\\Desktop\\KBACanada_Code\\BirdsCanada_KBAPrioritization")
 
 kbadb = dbConnect(
@@ -193,7 +195,9 @@ spa$Subcriterion[grepl("D", spa$Subcriterion)] <- 0
 
 ################ 6. Thriving Bird Index AND 7. Responsibility #################
 
-tbi <- read_xlsx("Data\\ThrivingBirdIndex.xlsx") %>% select(english_name, responsibility, indicator_lt)
+url_tbi <- "https://docs.google.com/spreadsheets/d/1wk3I6WgYIlCqsobkmIb4m2-xa5CLZmOh/edit?usp=sharing&ouid=108741135940790475545&rtpof=true&sd=true"
+
+tbi <- gsheet::gsheet2tbl(url_tbi) %>% select(english_name, responsibility, indicator_lt)
 spa <- spa %>% rename(english_name = Original_CommonNameEN)
 spa <- full_join(spa, tbi, by = "english_name")
 #original <- original %>% rename(english_name = Original_CommonNameEN) %>% full_join(tbi, by = "english_name")
@@ -221,34 +225,107 @@ p <- full_join(p, spaind, by = "SiteID")
 p <- full_join(p, spares, by = "SiteID")
 
 
+
 ############## 8. Overall Threats AND 9. Individual Threats ###################
 
-threat <- read_xlsx("Data\\SARThreatDataExport30April2026.xlsx", sheet = 1) %>% select(`COSEWIC common name and population`, `Overall threat impact (assigned)`, `Threat impact`) %>%
-  rename(english_name = `COSEWIC common name and population`, overall.threat = `Overall threat impact (assigned)`, individual.threat = `Threat impact`)
-#original <- original %>% full_join(threat, by = "english_name") %>% unique()
-threat <- full_join(threat, spa, by = "english_name")
-threat$overall.threat[which(threat$overall.threat == "Very High")] <- 0.7
-threat$overall.threat[which(threat$overall.threat == "Very High - High")] <- 0.6
-threat$overall.threat[which(threat$overall.threat == "High")] <- 0.5
-threat$overall.threat[which(threat$overall.threat == "High - Medium")] <- 0.4
-threat$overall.threat[which(threat$overall.threat == "Medium")] <- 0.3
-threat$overall.threat[which(threat$overall.threat == "Medium - Low")] <- 0.2
-threat$overall.threat[which(threat$overall.threat == "Low")] <- 0.1
+# Loading the SAR Threat Data
+# URL location of the SARThreatDataExport file
+url_threat <- "https://docs.google.com/spreadsheets/d/1a3B6P_NvbiWVwZsc8oyLaygHBX35ynwE/edit?usp=sharing&ouid=108741135940790475545&rtpof=true&sd=true"
 
-threat$individual.threat[which(threat$individual.threat == "Very High")] <- 0.7
-threat$individual.threat[which(threat$individual.threat == "Very High - High")] <- 0.6
-threat$individual.threat[which(threat$individual.threat == "High")] <- 0.5
-threat$individual.threat[which(threat$individual.threat == "High - Medium")] <- 0.4
-threat$individual.threat[which(threat$individual.threat == "High - Low")] <- 0.3
-threat$individual.threat[which(threat$individual.threat == "Medium")] <- 0.3
-threat$individual.threat[which(threat$individual.threat == "Medium - Low")] <- 0.2
-threat$individual.threat[which(threat$individual.threat == "Low")] <- 0.1
-threat$individual.threat[grepl(paste(c("Not applicable", "Not a threat", "Negligible", "Unknown", "Not calculated"), collapse = "|"), threat$individual.threat)] <- 0
-threat <- threat[-which(is.na(threat$SiteID) | is.na(threat$overall.threat) | is.na(threat$individual.threat)),]
-threatover <- threat %>% unique() %>% group_by(SiteID) %>% summarise(overall.threat = sum(as.numeric(overall.threat)))
-threatind <- threat %>% unique() %>% group_by(SiteID) %>% summarise(individual.threat = sum(as.numeric(individual.threat)))
+threat <- gsheet::gsheet2tbl(url_threat) %>% select(`COSEWIC common name and population`, `Listing scientific name`, `COSEWIC ID`, `Overall threat impact (assigned)`, `Threat (level 1)`, `Threat (level 2)`, `Threat impact`) %>%
+  rename(english_name = `COSEWIC common name and population`, scientific_name = `Listing scientific name`, COSEWICTaxonID = `COSEWIC ID`, overall.threat = `Overall threat impact (assigned)`, threat_level1 = `Threat (level 1)`, threat_level2 = `Threat (level 2)`, individual.threat = `Threat impact`)
+threat$COSEWICTaxonID <- as.integer(threat$COSEWICTaxonID)
+
+### Overall Threat Analysis
+## 1. Pull species at site information from KBA Database
+############## 8. Overall Threats AND 9. Individual Threats ###################
+
+# Loading the SAR Threat Data
+# URL location of the SARThreatDataExport file
+url_threat <- "https://docs.google.com/spreadsheets/d/1a3B6P_NvbiWVwZsc8oyLaygHBX35ynwE/edit?usp=sharing&ouid=108741135940790475545&rtpof=true&sd=true"
+
+threat <- gsheet::gsheet2tbl(url_threat) %>% select(`COSEWIC common name and population`, `Listing scientific name`, `COSEWIC ID`, `Overall threat impact (assigned)`, `Threat (level 1)`, `Threat (level 2)`, `Threat impact`) %>%
+  rename(english_name = `COSEWIC common name and population`, scientific_name = `Listing scientific name`, COSEWICTaxonID = `COSEWIC ID`, overall.threat = `Overall threat impact (assigned)`, threat_level1 = `Threat (level 1)`, threat_level2 = `Threat (level 2)`, individual.threat = `Threat impact`)
+threat$COSEWICTaxonID <- as.integer(threat$COSEWICTaxonID)
+
+### Overall Threat Analysis
+## 1. Pull species at site information from KBA Database
+KBA_Species <- kbadb %>% read_sf("Species") %>% select(SpeciesID, COSEWICTaxonID) #Pulling the COSEWIC Taxon ID for species to link SARA threat table with KBA SpeciesID
+spa_COSEWIC <- left_join(spa, KBA_Species) # add the COSEWICTaxinIDs to the existing species at site table
+spa_COSEWIC <- spa_COSEWIC %>% select(SiteID, SpeciesID, COSEWICTaxonID) %>% distinct(SiteID, SpeciesID, COSEWICTaxonID) # keep only necessary columns
+
+## 2. Summarise the SAR Threat Data to show overall threat for each species
+threat_species <- threat %>% distinct(english_name, COSEWICTaxonID, overall.threat)
+
+## 3. Create a new table with overall threat status for species at KBA sites
+threatover_analysis <- left_join(spa_COSEWIC, threat_species, by = "COSEWICTaxonID") # 1582 records have no overall.threat information - Check this w Amanda
 
 
+### Overall Threat Analysis
+#original <- original %>% full_join(threatover, by = "english_name") %>% unique()
+threatover_analysis <- threatover_analysis %>%
+  mutate(overall.threat = case_when(
+    overall.threat == "Low" ~ 0.1,
+    overall.threat == "Medium - Low" ~ 0.2,
+    overall.threat == "Medium" ~ 0.3,
+    overall.threat == "High - Low" ~ 0.3, # Check this w Amanda
+    overall.threat == "High - Medium" ~ 0.4,
+    overall.threat == "Very High - Low" ~ 0.4, # Check this w Amanda
+    overall.threat == "Very High - Medium" ~ 0.5, # Check this w Amanda
+    overall.threat == "High" ~ 0.5,
+    overall.threat == "Very High - High" ~ 0.6,
+    overall.threat == "Very High" ~ 0.7,
+    overall.threat == "Unknown" ~ 0 # Check this w Amanda
+  )) %>%
+  drop_na(overall.threat)
+
+threatover <- threatover_analysis %>% unique () %>% group_by(SiteID) %>% summarise(overall.threat = sum(as.numeric(overall.threat)))
+
+
+### Individual Threat Analysis
+
+# 1. Pull Threats at KBA Sites
+KBA_SiteThreats <- kbadb %>% read_sf("KBA_Threats") # reading in the KBA_Threats table from the KBA database
+KBA_Threats <- kbadb %>% read_sf("Threats") # reading in the Threats table from the KBA database
+SiteThreats_join <- left_join(KBA_SiteThreats, KBA_Threats) # joining the two tables above based on ThreatID
+
+# 2. Pull Species at KBA Sites and relevant threats for those species from the SARA database
+SpAtSite <- KBA_SpA %>% distinct(SiteID, SpeciesID, Original_CommonNameEN, Original_ScientificName) %>% drop_na(Original_ScientificName)
+SpAtSite_join <- left_join(SpAtSite, KBA_Species)
+
+# Table with SAR Threats for KBA Species at Site
+SpAtSite_Threats <- left_join(SpAtSite_join, threat, relationship = "many-to-many")
+SpAtSite_Threats <- SpAtSite_Threats %>% select(-english_name, -scientific_name, -overall.threat, -COSEWICTaxonID) %>% drop_na(threat_level2)
+
+SpAtSite_SubThreats <- SpAtSite_Threats
+SpAtSite_SubThreats$ThreatCode <- sub(" .*", "", SpAtSite_SubThreats$threat_level2) #Making a ThreatCode column to match the column in the SiteThreats_join table
+
+## 3. Create new table that keeps only the site threats relevant to species at KBA sites
+SpSiteThreat_Final <- inner_join(SpAtSite_SubThreats, SiteThreats_join, join_by(SiteID, ThreatCode))
+SpSiteThreat_Final <- SpSiteThreat_Final %>% select(-ThreatsSiteID, -ThreatID, -Threat_EN, -Threat_FR, -ThreatCode)
+
+## 4. Assigning values based on severity of each threat
+threatind_analysis <- SpSiteThreat_Final %>%
+  mutate(individual.threat = case_when(
+    individual.threat == "Negligible" ~ 0,
+    individual.threat == "Not a threat" ~ 0,
+    individual.threat == "Not applicable" ~ 0,
+    individual.threat == "Low" ~ 0.1,
+    individual.threat == "Medium - Low" ~ 0.2,
+    individual.threat == "Medium" ~ 0.3,
+    individual.threat == "High - Low" ~ 0.3,
+    individual.threat == "High - Medium" ~ 0.4,
+    individual.threat == "High" ~ 0.5,
+    individual.threat == "Very High - Medium" ~ 0.5, # Check this w Amanda
+    individual.threat == "Very High - High" ~ 0.6, # Check this w Amanda
+    individual.threat == "Very High" ~ 0.7
+  )) %>%
+  drop_na(individual.threat)
+
+# Sum assigned values for all relevant species threats at each site
+threatind <- threatind_analysis %>% unique() %>% group_by(SiteID) %>% summarise(individual.threat = sum(as.numeric(individual.threat)))
+
+## 5. Joining the species and site threat values to the prioritization table
 p <- full_join(p, threatover, by = "SiteID")
 p <- full_join(p, threatind, by = "SiteID")
 p <- p[!is.na(p$SiteCode),]
@@ -264,7 +341,7 @@ p <- p[!is.na(p$SiteCode),]
 
 # If raster has already been processed, read it in using the following code
 hm <- rast("Data/HM_CA_2022_r90_20251030.tif")
-  
+
 # Store Human Modification CRS for use throughout script.
 hm_crs <- crs(hm)
 
@@ -276,12 +353,12 @@ KBA_geom$HM <- NA # Create a blank column to store HM values
 for (i in KBA_geom$SiteID) {
   # Extract human modification scores for KBAs
   KBA_geom$HM[KBA_geom$SiteID == i] <- extract(
-        hm,
-        KBA_geom[KBA_geom$SiteID == i,],
-        fun = "mean",
-        na.rm = TRUE,
-        ID = FALSE
-      )
+    hm,
+    KBA_geom[KBA_geom$SiteID == i,],
+    fun = "mean",
+    na.rm = TRUE,
+    ID = FALSE
+  )
 }
 KBA_geom$HM <- as.numeric(KBA_geom$HM)
 
@@ -289,6 +366,6 @@ KBA_geom$HM <- as.numeric(KBA_geom$HM)
 ################### Calculate total score and save output #####################
 
 p$total.score <- rowSums(p[,c(4:12)], na.rm = T)
-write.csv(p, "priority_v2.csv")
+write.csv(p, "priority_2026.11.11.2.csv")
 #write.csv(original, "original_priority_v2.csv")
 
